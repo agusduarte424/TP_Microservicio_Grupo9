@@ -13,6 +13,7 @@ builder.Services.AddControllers();
 builder.Services.AddErrorHandling();
 builder.Services.AddPersistence();
 builder.Services.AddCorrelationId();
+builder.Services.AddServiceClients(builder.Configuration);
 builder.Services.AddHealth(builder.Configuration);
 builder.Services.AddScoped<OrderService>();
 
