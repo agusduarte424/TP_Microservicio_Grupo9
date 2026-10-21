@@ -1,6 +1,8 @@
 // OrderService es donde vive la lógica de negocio de Orders.
 // El controller le pasa cada request; el Service valida, lanza excepciones de dominio si algo
-// no se puede hacer y usa IOrderRepository para leer y guardar.
+// no se puede hacer, usa IOrderRepository para leer y guardar, y los clientes de Clients/
+// para consultar a Users.API y Products.API.
+using Orders.API.Clients;
 using Orders.API.Data;
 using Orders.API.DTOs;
 using Orders.API.Exceptions;
@@ -11,8 +13,102 @@ namespace Orders.API.Services
     /// <summary>
     /// Lógica de negocio de las órdenes.
     /// </summary>
-    public class OrderService(IOrderRepository repository)
+    public class OrderService(
+        IOrderRepository repository,
+        IUsersApiClient usersApi,
+        IProductsApiClient productsApi,
+        ILogger<OrderService> logger)
     {
+        /// <summary>
+        /// Crea una orden en estado Pendiente. Pasos:
+        /// 1) valida los datos (ORD-002); 2) valida el usuario en Users.API (ORD-003);
+        /// 3) valida cada producto en Products.API (ORD-004) y su stock (ORD-005);
+        /// 4) toma el precio actual de cada producto, calcula el total y guarda.
+        /// Si Users.API o Products.API fallan o no responden, la excepción llega al
+        /// GlobalExceptionHandler y se responde 500 con ORD-007.
+        /// </summary>
+        public async Task<OrderResponse> CrearOrden(CreateOrderRequest request, CancellationToken cancellationToken = default)
+        {
+            ValidarDatos(request);
+            var usuarioId = request.UsuarioId!.Value;
+
+            if (!await usersApi.ExisteUsuario(usuarioId, cancellationToken))
+                throw new NotFoundException(ErrorCodes.ORD_003);
+
+            // Si el mismo producto viene en dos items, se suman las cantidades:
+            // el stock se valida contra el total pedido de ese producto.
+            var pedidos = request.Items!
+                .GroupBy(i => i.ProductoId!.Value)
+                .Select(g => (ProductoId: g.Key, Cantidad: g.Sum(i => i.Cantidad)))
+                .ToList();
+
+            var items = new List<OrderItem>();
+            foreach (var (productoId, cantidad) in pedidos)
+            {
+                var producto = await productsApi.ObtenerProducto(productoId, cancellationToken)
+                    ?? throw new NotFoundException(ErrorCodes.ORD_004,
+                        $"Producto no encontrado al crear la orden: {productoId}.");
+
+                if (producto.Stock < cantidad)
+                    throw new BusinessRuleException(ErrorCodes.ORD_005,
+                        $"Stock insuficiente para '{producto.Nombre}'. Disponible: {producto.Stock}, solicitado: {cantidad}.");
+
+                // El precio se toma de Products.API en este momento y queda fijo en la orden.
+                items.Add(new OrderItem
+                {
+                    ProductoId = productoId,
+                    Cantidad = cantidad,
+                    PrecioUnitario = producto.Precio
+                });
+            }
+
+            var ahora = DateTime.UtcNow;
+            var orden = new Order
+            {
+                Id = Guid.NewGuid(),
+                UsuarioId = usuarioId,
+                Items = items,
+                Total = items.Sum(i => i.Cantidad * i.PrecioUnitario),
+                Estado = EstadosOrden.Pendiente,
+                FechaCreacion = ahora,
+                FechaActualizacion = ahora
+            };
+
+            await repository.Guardar(orden);
+            logger.LogInformation("Orden {OrdenId} creada para el usuario {UsuarioId} por {Total}",
+                orden.Id, orden.UsuarioId, orden.Total);
+
+            return MapearAResponse(orden);
+        }
+
+        // Validaciones de ORD-002 que no dependen de otros servicios. Las Data Annotations del DTO
+        // ya cubren campos faltantes y cantidades <= 0; acá se repiten por si el Service se usa
+        // sin pasar por el controller, y se agrega lo que las anotaciones no ven (GUID vacío).
+        // Se juntan todos los problemas y se informan juntos, separados por punto y coma.
+        private static void ValidarDatos(CreateOrderRequest request)
+        {
+            var problemas = new List<string>();
+
+            if (request.UsuarioId is null || request.UsuarioId == Guid.Empty)
+                problemas.Add("El usuarioId es obligatorio");
+
+            if (request.Items is null || request.Items.Count == 0)
+            {
+                problemas.Add("La orden debe tener al menos un item");
+            }
+            else
+            {
+                if (request.Items.Any(i => i.ProductoId is null || i.ProductoId == Guid.Empty))
+                    problemas.Add("El productoId de cada item es obligatorio");
+
+                if (request.Items.Any(i => i.Cantidad <= 0))
+                    problemas.Add("La cantidad de cada item debe ser mayor a 0");
+            }
+
+            if (problemas.Count > 0)
+                throw new ValidationException(ErrorCodes.ORD_002, string.Join("; ", problemas) + ".");
+        }
+
         /// <summary>
         /// Lista las órdenes. Si viene usuarioId, solo las de ese usuario.
         /// Un usuarioId que no es un GUID no puede tener órdenes: devuelve una lista vacía.

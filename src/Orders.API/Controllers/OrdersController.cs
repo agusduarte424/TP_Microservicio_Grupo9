@@ -48,6 +48,36 @@ namespace Orders.API.Controllers
         }
 
         /// <summary>
+        /// Crea una orden nueva en estado Pendiente.
+        /// </summary>
+        /// <remarks>
+        /// Valida que el usuario exista en Users.API y que cada producto exista y tenga stock en
+        /// Products.API. El precio unitario se toma de Products.API en ese momento y el total se
+        /// calcula solo. Si un producto aparece en dos items, se suman las cantidades.
+        /// </remarks>
+        /// <param name="request">Usuario y productos de la orden.</param>
+        /// <param name="cancellationToken">Se cancela si el cliente corta el request.</param>
+        /// <response code="201">Orden creada. El header Location apunta a GET /api/orders/{id}.</response>
+        /// <response code="400">Faltan datos, la lista de items está vacía o una cantidad es menor o igual a 0 (ORD-002).</response>
+        /// <response code="404">El usuario (ORD-003) o algún producto (ORD-004) no existe.</response>
+        /// <response code="409">Conflicto de estado (ORD-006). La creación no lo produce: figura porque la consigna lo lista para este endpoint.</response>
+        /// <response code="422">Stock insuficiente para algún producto (ORD-005).</response>
+        /// <response code="500">Error interno, o Users.API o Products.API no responden (ORD-007).</response>
+        [HttpPost]
+        [Consumes("application/json")]
+        [ProducesResponseType(typeof(OrderResponse), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest, "application/problem+json")]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound, "application/problem+json")]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict, "application/problem+json")]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status422UnprocessableEntity, "application/problem+json")]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError, "application/problem+json")]
+        public async Task<ActionResult<OrderResponse>> Create([FromBody] CreateOrderRequest request, CancellationToken cancellationToken)
+        {
+            var orden = await service.CrearOrden(request, cancellationToken);
+            return CreatedAtAction(nameof(GetById), new { id = orden.Id }, orden);
+        }
+
+        /// <summary>
         /// Cambia el estado de una orden.
         /// </summary>
         /// <remarks>
