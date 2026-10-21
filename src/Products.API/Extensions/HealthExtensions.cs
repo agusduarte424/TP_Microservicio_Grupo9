@@ -5,6 +5,7 @@
 // Para replicarlo en otro servicio: copiar este archivo y cambiar solo el namespace.
 // Los checks se arman solos a partir de appsettings.json:
 //   - ConnectionStrings:DefaultConnection -> check de la base (ready)
+//   - cada URL de la sección "Services"    -> check de esa dependencia HTTP (ready)
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -19,11 +20,18 @@ namespace Products.API.Extensions
         private const string Live = "live";
         private const string Ready = "ready";
 
+        /// <summary>Nombre del HttpClient que usan los checks de dependencias.</summary>
+        public const string HealthClient = "health";
+
         /// <summary>
-        /// Registra los checks: el proceso (live) y la base de datos (ready).
+        /// Registra los checks: el proceso (live), la base de datos (ready) y una
+        /// dependencia HTTP por cada servicio configurado en "Services" (ready).
         /// </summary>
         public static IServiceCollection AddHealth(this IServiceCollection services, IConfiguration configuration)
         {
+            // Timeout corto: un servicio caído no puede dejar colgado al health check.
+            services.AddHttpClient(HealthClient, client => client.Timeout = TimeSpan.FromSeconds(2));
+
             var checks = services.AddHealthChecks()
                 // Live: si este código responde, el proceso está vivo. No mira nada más.
                 .AddCheck("proceso", () => HealthCheckResult.Healthy("El servicio está en ejecución."), tags: [Live]);
@@ -35,12 +43,27 @@ namespace Products.API.Extensions
                 checks.AddCheck("base-de-datos", new SqliteHealthCheck(connectionString), tags: [Ready]);
             }
 
+            foreach (var dependencia in configuration.GetSection("Services").GetChildren())
+            {
+                if (string.IsNullOrWhiteSpace(dependencia.Value)) continue;
+
+                // Ready: si otro servicio no responde, este sigue andando pero con funciones
+                // limitadas (por ejemplo Products no puede verificar órdenes) -> Degraded.
+                var nombre = dependencia.Key; // "OrdersApi", "UsersApi"...
+                var url = new Uri(new Uri(dependencia.Value), "health/live");
+                checks.Add(new HealthCheckRegistration(
+                    nombre,
+                    sp => new HttpDependencyHealthCheck(sp.GetRequiredService<IHttpClientFactory>(), url),
+                    HealthStatus.Degraded,
+                    [Ready]));
+            }
+
             return services;
         }
 
         /// <summary>
         /// Expone los tres endpoints con respuesta JSON:
-        /// /health (todos los checks), /health/live (solo el proceso) y /health/ready (base de datos).
+        /// /health (todos los checks), /health/live (solo el proceso) y /health/ready (base y dependencias).
         /// </summary>
         public static WebApplication MapHealth(this WebApplication app)
         {
@@ -116,6 +139,33 @@ namespace Products.API.Extensions
                 // Sin detalles internos en la respuesta: solo el tipo de problema.
                 return new HealthCheckResult(context.Registration.FailureStatus,
                     "No se pudo acceder a la base de datos.", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verifica que otro microservicio responda en su /health/live.
+    /// </summary>
+    public class HttpDependencyHealthCheck(IHttpClientFactory factory, Uri url) : IHealthCheck
+    {
+        public async Task<HealthCheckResult> CheckHealthAsync(
+            HealthCheckContext context, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var client = factory.CreateClient(HealthExtensions.HealthClient);
+                using var response = await client.GetAsync(url, cancellationToken);
+
+                return response.IsSuccessStatusCode
+                    ? HealthCheckResult.Healthy($"{url.GetLeftPart(UriPartial.Authority)} responde.")
+                    : new HealthCheckResult(context.Registration.FailureStatus,
+                        $"{url.GetLeftPart(UriPartial.Authority)} respondió {(int)response.StatusCode}.");
+            }
+            catch (Exception)
+            {
+                // Servicio apagado, timeout o error de red.
+                return new HealthCheckResult(context.Registration.FailureStatus,
+                    $"{url.GetLeftPart(UriPartial.Authority)} no responde.");
             }
         }
     }
