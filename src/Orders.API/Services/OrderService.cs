@@ -37,6 +37,35 @@ namespace Orders.API.Services
             return MapearAResponse(orden);
         }
 
+        /// <summary>
+        /// Cambia el estado de una orden respetando la máquina de estados.
+        /// ORD-002 si el estado no existe, ORD-001 si la orden no existe,
+        /// ORD-006 si la transición no está permitida.
+        /// </summary>
+        public async Task<OrderStatusResponse> ActualizarEstado(string id, UpdateOrderStatusRequest request)
+        {
+            // Primero el dato recibido: un estado que no existe es un error del request (400).
+            var nuevo = EstadosOrden.Normalizar(request.Estado)
+                ?? throw new ValidationException(ErrorCodes.ORD_002,
+                    $"El estado '{request.Estado}' no es válido. Valores posibles: {string.Join(", ", EstadosOrden.Todos)}.");
+
+            var orden = await BuscarOrden(id);
+
+            // El estado existe pero no se puede llegar a él desde el actual: conflicto (409).
+            if (!EstadosOrden.PuedeCambiar(orden.Estado, nuevo))
+                throw new BusinessRuleException(ErrorCodes.ORD_006, MensajeTransicionInvalida(orden.Estado, nuevo));
+
+            var fechaActualizacion = DateTime.UtcNow;
+            await repository.ActualizarEstado(orden.Id, nuevo, fechaActualizacion);
+
+            return new OrderStatusResponse
+            {
+                Id = orden.Id,
+                Estado = nuevo,
+                FechaActualizacion = fechaActualizacion
+            };
+        }
+
         // Busca la orden por id o lanza ORD-001. Un id que no es GUID tampoco existe,
         // igual que el ejemplo de la consigna "GET /api/products/99" responde 404.
         private async Task<Order> BuscarOrden(string id)
@@ -46,6 +75,18 @@ namespace Orders.API.Services
 
             return await repository.ObtenerPorId(guid)
                 ?? throw new NotFoundException(ErrorCodes.ORD_001);
+        }
+
+        private static string MensajeTransicionInvalida(string actual, string nuevo)
+        {
+            if (actual == nuevo)
+                return $"La orden ya está en estado '{actual}'.";
+
+            // Mismo formato que el ejemplo de la consigna para los retrocesos.
+            var retrocede = EstadosOrden.Todos.ToList().IndexOf(nuevo) < EstadosOrden.Todos.ToList().IndexOf(actual);
+            return retrocede
+                ? $"Una orden en estado '{actual}' no puede volver a '{nuevo}'."
+                : $"Una orden en estado '{actual}' no puede pasar a '{nuevo}'.";
         }
 
         // Convierte el modelo interno en lo que ve el cliente.
