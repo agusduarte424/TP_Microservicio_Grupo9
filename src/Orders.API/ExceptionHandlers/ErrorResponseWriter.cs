@@ -10,7 +10,9 @@ namespace Orders.API.ExceptionHandlers
     public static class ErrorResponseWriter
     {
         // type y title de cada status, con los mismos RFC que usa la consigna en sus ejemplos.
-        private static readonly Dictionary<int, (string Type, string Title)> Statuses = new()
+        // Público porque también lo usa el filtro de Swagger para armar los ejemplos.
+        public static readonly IReadOnlyDictionary<int, (string Type, string Title)> Statuses =
+            new Dictionary<int, (string Type, string Title)>
         {
             [400] = ("https://tools.ietf.org/html/rfc7231#section-6.5.1", "Bad Request"),
             [404] = ("https://tools.ietf.org/html/rfc7231#section-6.5.4", "Not Found"),

@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Orders.API.DTOs;
+using Orders.API.Exceptions;
 using Orders.API.Services;
+using Orders.API.Swagger;
 
 namespace Orders.API.Controllers
 {
@@ -24,6 +26,7 @@ namespace Orders.API.Controllers
         /// <response code="200">Lista de órdenes (vacía si no hay ninguna).</response>
         /// <response code="500">Error interno (ORD-007).</response>
         [HttpGet]
+        [ErrorExample(ErrorCodes.ORD_007, "Error interno al procesar la orden.")]
         [ProducesResponseType(typeof(IEnumerable<OrderResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError, "application/problem+json")]
         public async Task<ActionResult<IEnumerable<OrderResponse>>> GetAll([FromQuery] string? usuarioId)
@@ -39,6 +42,8 @@ namespace Orders.API.Controllers
         /// <response code="404">La orden no existe (ORD-001).</response>
         /// <response code="500">Error interno (ORD-007).</response>
         [HttpGet("{id}")]
+        [ErrorExample(ErrorCodes.ORD_001, "Orden no encontrada.")]
+        [ErrorExample(ErrorCodes.ORD_007, "Error interno al procesar la orden.")]
         [ProducesResponseType(typeof(OrderResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound, "application/problem+json")]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError, "application/problem+json")]
@@ -64,6 +69,12 @@ namespace Orders.API.Controllers
         /// <response code="422">Stock insuficiente para algún producto (ORD-005).</response>
         /// <response code="500">Error interno, o Users.API o Products.API no responden (ORD-007).</response>
         [HttpPost]
+        [ErrorExample(ErrorCodes.ORD_002, "La orden debe tener al menos un item; La cantidad de cada item debe ser mayor a 0.")]
+        [ErrorExample(ErrorCodes.ORD_003, "Usuario no encontrado al crear la orden.")]
+        [ErrorExample(ErrorCodes.ORD_004, "Producto no encontrado al crear la orden: 3fa85f64-5717-4562-b3fc-2c963f66afa6.")]
+        [ErrorExample(ErrorCodes.ORD_005, "Stock insuficiente para 'Notebook Dell XPS 15'. Disponible: 2, solicitado: 5.")]
+        [ErrorExample(ErrorCodes.ORD_006, "El estado de la orden no puede ser modificado.")]
+        [ErrorExample(ErrorCodes.ORD_007, "Error interno al procesar la orden.")]
         [Consumes("application/json")]
         [ProducesResponseType(typeof(OrderResponse), StatusCodes.Status201Created)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest, "application/problem+json")]
@@ -97,6 +108,10 @@ namespace Orders.API.Controllers
         /// <response code="409">La transición no está permitida (ORD-006).</response>
         /// <response code="500">Error interno (ORD-007).</response>
         [HttpPut("{id}/status")]
+        [ErrorExample(ErrorCodes.ORD_002, "El estado 'Volando' no es válido. Valores posibles: Pendiente, Confirmada, Enviada, Entregada, Cancelada.")]
+        [ErrorExample(ErrorCodes.ORD_001, "Orden no encontrada.")]
+        [ErrorExample(ErrorCodes.ORD_006, "Una orden en estado 'Entregada' no puede volver a 'Pendiente'.")]
+        [ErrorExample(ErrorCodes.ORD_007, "Error interno al procesar la orden.")]
         [Consumes("application/json")]
         [ProducesResponseType(typeof(OrderStatusResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest, "application/problem+json")]
