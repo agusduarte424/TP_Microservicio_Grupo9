@@ -35,10 +35,17 @@ namespace Orders.API.Extensions
                     var mensajes = context.ModelState
                         .Where(e => e.Value?.Errors.Count > 0)
                         .SelectMany(e => e.Value!.Errors.Select(error => Traducir(e.Key, error)))
-                        .Distinct();
+                        .Distinct()
+                        .ToList();
 
-                    // La consigna pide listar todos los problemas separados por punto y coma.
-                    var errorMessage = string.Join("; ", mensajes);
+                    // Si el JSON no se pudo leer, ASP.NET Core además avisa que "falta el body".
+                    // Ese segundo aviso confunde, así que se deja solo el del JSON.
+                    if (mensajes.Contains(JsonInvalido))
+                        mensajes = [JsonInvalido];
+
+                    // La consigna pide listar todos los problemas separados por punto y coma:
+                    // "El estado es obligatorio; La cantidad debe ser mayor a 0."
+                    var errorMessage = string.Join("; ", mensajes.Select(m => m.TrimEnd('.'))) + ".";
 
                     var logger = context.HttpContext.RequestServices
                         .GetRequiredService<ILoggerFactory>().CreateLogger("Validacion");
@@ -57,6 +64,9 @@ namespace Orders.API.Extensions
             return services;
         }
 
+        private const string JsonInvalido =
+            "El cuerpo de la solicitud no es un JSON válido o tiene un campo con formato incorrecto.";
+
         // Los mensajes de las Data Annotations ya están en español (los escribimos en los DTOs).
         // Los que genera ASP.NET Core al leer el request vienen en inglés y con detalles técnicos,
         // así que se reemplazan por uno claro.
@@ -64,7 +74,7 @@ namespace Orders.API.Extensions
         {
             // Body que no se puede leer como JSON (llave sin cerrar, texto en un número, etc.).
             if (error.Exception is not null || campo.StartsWith('$'))
-                return "El cuerpo de la solicitud no es un JSON válido o tiene un campo con formato incorrecto.";
+                return JsonInvalido;
 
             // Body vacío.
             if (campo is "request" or "" && error.ErrorMessage.Contains("required", StringComparison.OrdinalIgnoreCase))
