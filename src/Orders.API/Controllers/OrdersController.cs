@@ -5,7 +5,7 @@ using Orders.API.Services;
 namespace Orders.API.Controllers
 {
     /// <summary>
-    /// Órdenes de compra.
+    /// Órdenes de compra: consulta, creación y cambio de estado.
     /// </summary>
     /// <remarks>
     /// El controller no tiene lógica ni try/catch: le pasa cada request al OrderService,
@@ -45,6 +45,37 @@ namespace Orders.API.Controllers
         public async Task<ActionResult<OrderResponse>> GetById(string id)
         {
             return Ok(await service.ObtenerPorId(id));
+        }
+
+        /// <summary>
+        /// Cambia el estado de una orden.
+        /// </summary>
+        /// <remarks>
+        /// Cambios permitidos:
+        ///
+        ///     Pendiente  → Confirmada o Cancelada
+        ///     Confirmada → Enviada o Cancelada
+        ///     Enviada    → Entregada
+        ///     Entregada y Cancelada son estados finales.
+        ///
+        /// </remarks>
+        /// <param name="id">Identificador de la orden.</param>
+        /// <param name="request">Nuevo estado.</param>
+        /// <response code="200">Estado actualizado.</response>
+        /// <response code="400">El estado no existe o falta en el body (ORD-002).</response>
+        /// <response code="404">La orden no existe (ORD-001).</response>
+        /// <response code="409">La transición no está permitida (ORD-006).</response>
+        /// <response code="500">Error interno (ORD-007).</response>
+        [HttpPut("{id}/status")]
+        [Consumes("application/json")]
+        [ProducesResponseType(typeof(OrderStatusResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest, "application/problem+json")]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound, "application/problem+json")]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict, "application/problem+json")]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError, "application/problem+json")]
+        public async Task<ActionResult<OrderStatusResponse>> UpdateStatus(string id, [FromBody] UpdateOrderStatusRequest request)
+        {
+            return Ok(await service.ActualizarEstado(id, request));
         }
     }
 }
