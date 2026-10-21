@@ -5,6 +5,9 @@ using Products.API.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Serilog va antes que cualquier otra configuración.
+builder.AddSerilogLogging();
+
 builder.Services.AddControllers();
 builder.Services.AddPersistence();
 
