@@ -9,6 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddSerilogLogging();
 
 builder.Services.AddControllers();
+builder.Services.AddErrorHandling();
 builder.Services.AddPersistence();
 builder.Services.AddCorrelationId();
 builder.Services.AddHealth(builder.Configuration);
@@ -23,6 +24,9 @@ app.UseCorrelationId();
 // Log de inicio y fin de cada request. Va antes de app.UseExceptionHandler()
 // para registrar el status final que arma el handler de errores.
 app.UseRequestLogging();
+
+// Errores: cada excepción la convierte en respuesta su IExceptionHandler.
+app.UseExceptionHandler();
 
 app.MapControllers();
 app.MapHealth();
