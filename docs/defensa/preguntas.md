@@ -34,3 +34,20 @@ Cada paquete terminado suma 3 preguntas con su respuesta corta.
    no lo conoce?** `UseRequestLogging` lo guarda con `LogContext.PushProperty`
    al empezar el request, y `Enrich.FromLogContext()` lo agrega a todos los
    logs que se escriben mientras ese request está en curso.
+
+### F3 · Correlation ID
+
+1. **¿Cómo viaja el Correlation ID de Orders a Products?** El middleware de
+   Orders lo lee del header `X-Correlation-Id` (o genera uno) y lo guarda en el
+   request. Cuando Orders llama a Products con su `HttpClient`, el
+   `CorrelationIdDelegatingHandler` copia ese ID al header de la llamada.
+   Products lo recibe, lo respeta en vez de generar otro, y lo escribe en sus
+   logs. Buscando ese ID se ven los logs de los dos servicios.
+2. **¿Por qué un `DelegatingHandler` y no copiar el header en cada Service?**
+   Porque se registra una vez por `HttpClient` y se aplica a todas sus
+   llamadas. Si se copiara a mano, bastaría con olvidarse en una sola llamada
+   para que la traza se corte.
+3. **¿Por qué `UseCorrelationId()` va antes que `UseRequestLogging()`?** Los
+   middlewares corren en orden de registro. Si el ID se guarda primero, la
+   línea `Inicio ...` del log ya lo incluye; al revés, el inicio de cada request
+   quedaría sin ID.
