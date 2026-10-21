@@ -66,3 +66,30 @@ Cada paquete terminado suma 3 preguntas con su respuesta corta.
    servicio y no a `/health/ready`?** Para no encadenar fallas: con ready,
    cada servicio revisaría también las dependencias de sus dependencias, y una
    sola caída marcaría a todos como degradados.
+
+### S3 · Orders.API
+
+1. **¿Qué pasa si Products.API está caída cuando se crea una orden?**
+   `ProductsApiClient` no puede conectarse (o recibe un 5xx) y lanza una
+   excepción. No es una excepción de dominio, así que la toma el
+   `GlobalExceptionHandler`, que responde 500 con `ORD-007` y la loguea como
+   `Error`. La orden no se guarda, porque el guardado está al final. Además,
+   `/health/ready` de Orders pasa a `Degraded`.
+2. **¿Por qué stock insuficiente es 422 y una transición inválida es 409, y no
+   ambos 400?** 400 es para un request mal armado. En los dos casos el request
+   está bien formado: 422 dice "entiendo lo que pedís pero no se puede
+   procesar" (no hay stock), y 409 dice "choca con el estado actual del
+   recurso" (la orden ya está `Entregada`). En el código, los dos son
+   `BusinessRuleException` y el status sale del catálogo `ErrorCodes`.
+3. **¿Por qué el `precioUnitario` se guarda en la orden en vez de consultarlo
+   cada vez?** Porque es el precio en el momento de la compra. Si después
+   Products cambia el precio, la orden ya creada no puede cambiar su total.
+4. **¿Por qué `GET /api/orders/99` responde 404 y no 400?** La consigna
+   permite solo 200, 404 y 500 en ese endpoint, y su propio ejemplo
+   (`GET /api/products/99`) responde 404. Un id que no es GUID no puede
+   existir, así que se trata como "orden no encontrada" (`ORD-001`).
+5. **¿Cómo se evita que un JSON mal formado devuelva un 400 sin `errorCode`?**
+   Con `[ApiController]`, ASP.NET Core valida el body antes del controller y
+   responde solo. En `ErrorHandlingExtensions` se reemplaza esa respuesta
+   (`InvalidModelStateResponseFactory`) por el contrato de la consigna con
+   `ORD-002` y todos los problemas separados por `;`.
