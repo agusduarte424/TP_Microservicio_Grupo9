@@ -15,6 +15,10 @@ var app = builder.Build();
 
 app.InitializeDatabase();
 
+// Log de inicio y fin de cada request. Va antes de app.UseExceptionHandler()
+// para registrar el status final que arma el handler de errores.
+app.UseRequestLogging();
+
 app.MapControllers();
 
 app.Run();
