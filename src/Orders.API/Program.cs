@@ -2,6 +2,7 @@
 // errores, health, Swagger) se agrega con una línea que llama a su archivo
 // dentro de Extensions/.
 using Orders.API.Extensions;
+using Orders.API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +14,7 @@ builder.Services.AddErrorHandling();
 builder.Services.AddPersistence();
 builder.Services.AddCorrelationId();
 builder.Services.AddHealth(builder.Configuration);
+builder.Services.AddScoped<OrderService>();
 
 var app = builder.Build();
 
