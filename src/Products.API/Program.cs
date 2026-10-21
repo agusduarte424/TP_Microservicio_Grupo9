@@ -10,10 +10,14 @@ builder.AddSerilogLogging();
 
 builder.Services.AddControllers();
 builder.Services.AddPersistence();
+builder.Services.AddCorrelationId();
 
 var app = builder.Build();
 
 app.InitializeDatabase();
+
+// Correlation ID primero, para que todos los logs del request ya lo tengan.
+app.UseCorrelationId();
 
 // Log de inicio y fin de cada request. Va antes de app.UseExceptionHandler()
 // para registrar el status final que arma el handler de errores.
