@@ -51,3 +51,18 @@ Cada paquete terminado suma 3 preguntas con su respuesta corta.
    middlewares corren en orden de registro. Si el ID se guarda primero, la
    línea `Inicio ...` del log ya lo incluye; al revés, el inicio de cada request
    quedaría sin ID.
+
+### F5 · Health checks
+
+1. **¿Qué diferencia hay entre `/health/live` y `/health/ready`?** Live solo
+   dice si el proceso está vivo (sirve para decidir si reiniciarlo). Ready dice
+   si puede atender requests: verifica la base de datos y los servicios de los
+   que depende. Si la base se cae, live sigue `Healthy` y ready no.
+2. **¿Por qué un servicio caído da `Degraded` y la base caída da `Unhealthy`?**
+   Sin base el servicio no puede hacer nada. Si se cae otro servicio, este
+   sigue funcionando para casi todo: Products lista y crea productos aunque
+   Orders esté apagado; solo falla el `DELETE`.
+3. **¿Por qué el check de una dependencia llama a `/health/live` del otro
+   servicio y no a `/health/ready`?** Para no encadenar fallas: con ready,
+   cada servicio revisaría también las dependencias de sus dependencias, y una
+   sola caída marcaría a todos como degradados.
