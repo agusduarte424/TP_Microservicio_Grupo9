@@ -18,3 +18,19 @@ Cada paquete terminado suma 3 preguntas con su respuesta corta.
 ## Pili
 
 ## Rama
+
+### F2 · Logging con Serilog
+
+1. **¿Por qué Serilog se configura antes que todo en `Program.cs`?** Para que
+   cualquier cosa que se registre después (persistencia, errores, Swagger) ya
+   escriba con Serilog. Si se configurara al final, los logs del arranque
+   saldrían con el logger por defecto, sin `Servicio` ni formato JSON.
+2. **¿Por qué el log de requests va antes de `UseExceptionHandler()`?** Porque
+   los middlewares son capas: el que se registra primero envuelve a los
+   siguientes. Así, cuando el request vuelve, el handler ya armó la respuesta
+   (por ejemplo 404 `PRD-001`) y el log registra ese status real como
+   `Warning`. Al revés, registraría cada error de negocio como un `Error` 500.
+3. **¿Cómo aparece el `Endpoint` en un log que escribe el Service, si el Service
+   no lo conoce?** `UseRequestLogging` lo guarda con `LogContext.PushProperty`
+   al empezar el request, y `Enrich.FromLogContext()` lo agrega a todos los
+   logs que se escriben mientras ese request está en curso.
