@@ -1,8 +1,11 @@
 // Bloque de logging (F2): Serilog con consola legible y archivo JSON estructurado.
-// Program.cs lo usa con una línea:
+// Program.cs lo usa con dos líneas:
 //   builder.AddSerilogLogging();   -> primera configuración, antes que todo
+//   app.UseRequestLogging();       -> antes de app.UseExceptionHandler()
 // Para replicarlo en otro servicio: copiar este archivo y cambiar solo el namespace.
 using Serilog;
+using Serilog.Context;
+using Serilog.Events;
 using Serilog.Formatting.Json;
 
 namespace Products.API.Extensions
@@ -42,6 +45,46 @@ namespace Products.API.Extensions
                     rollingInterval: RollingInterval.Day));
 
             return builder;
+        }
+
+        /// <summary>
+        /// Loggea el inicio y el fin de cada request. El fin incluye status y duración,
+        /// con nivel según el resultado: 5xx o excepción = Error, 4xx = Warning, resto = Information.
+        /// Va antes de UseExceptionHandler para registrar el status final que arma el handler.
+        /// </summary>
+        public static WebApplication UseRequestLogging(this WebApplication app)
+        {
+            // 1) Inicio del request y campo Endpoint para todos los logs que se escriban adentro.
+            app.Use(async (context, next) =>
+            {
+                var endpoint = $"{context.Request.Method} {context.Request.Path}";
+                using (LogContext.PushProperty("Endpoint", endpoint))
+                {
+                    var logger = context.RequestServices
+                        .GetRequiredService<ILoggerFactory>()
+                        .CreateLogger("Request");
+                    logger.LogInformation("Inicio {Metodo} {Ruta}",
+                        context.Request.Method, context.Request.Path.Value);
+
+                    await next(context);
+                }
+            });
+
+            // 2) Fin del request: status y duración en milisegundos.
+            app.UseSerilogRequestLogging(options =>
+            {
+                options.MessageTemplate =
+                    "Fin {RequestMethod} {RequestPath} -> {StatusCode} en {Elapsed:0} ms";
+
+                options.GetLevel = (context, elapsed, exception) =>
+                    exception is not null || context.Response.StatusCode >= 500
+                        ? LogEventLevel.Error
+                        : context.Response.StatusCode >= 400
+                            ? LogEventLevel.Warning
+                            : LogEventLevel.Information;
+            });
+
+            return app;
         }
     }
 }
