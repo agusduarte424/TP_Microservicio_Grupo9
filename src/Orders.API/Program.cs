@@ -15,6 +15,7 @@ builder.Services.AddPersistence();
 builder.Services.AddCorrelationId();
 builder.Services.AddServiceClients(builder.Configuration);
 builder.Services.AddHealth(builder.Configuration);
+builder.Services.AddSwaggerDocs();
 builder.Services.AddScoped<OrderService>();
 
 var app = builder.Build();
@@ -31,6 +32,7 @@ app.UseRequestLogging();
 // Errores: cada excepción la convierte en respuesta su IExceptionHandler.
 app.UseExceptionHandler();
 
+app.UseSwaggerDocs();
 app.MapControllers();
 app.MapHealth();
 
