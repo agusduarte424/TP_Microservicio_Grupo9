@@ -26,11 +26,8 @@ namespace Orders.API.Swagger
                 if (!operation.Responses.TryGetValue(status, out var response))
                     continue;
 
-                if (!response.Content.TryGetValue(ProblemJson, out var mediaType))
-                {
-                    mediaType = new OpenApiMediaType();
-                    response.Content[ProblemJson] = mediaType;
-                }
+                if (response.Content.Count == 0)
+                    response.Content[ProblemJson] = new OpenApiMediaType();
 
                 var error = new ErrorResponse
                 {
@@ -46,11 +43,18 @@ namespace Orders.API.Swagger
 
                 // El JSON se arma con las mismas opciones que la API (camelCase).
                 var json = JsonSerializer.Serialize(error, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-                mediaType.Examples[ejemplo.ErrorCode] = new OpenApiExample
+
+                // Se agrega en todos los formatos de la respuesta (application/json y
+                // application/problem+json): Swagger UI muestra primero application/json,
+                // y si el ejemplo estuviera solo en el otro, se vería el ejemplo genérico del esquema.
+                foreach (var mediaType in response.Content.Values)
                 {
-                    Summary = $"{ejemplo.ErrorCode}: {ErrorCodes.Catalogo[ejemplo.ErrorCode].Message}",
-                    Value = OpenApiAnyFactory.CreateFromJson(json)
-                };
+                    mediaType.Examples[ejemplo.ErrorCode] = new OpenApiExample
+                    {
+                        Summary = $"{ejemplo.ErrorCode}: {ErrorCodes.Catalogo[ejemplo.ErrorCode].Message}",
+                        Value = OpenApiAnyFactory.CreateFromJson(json)
+                    };
+                }
             }
         }
 
