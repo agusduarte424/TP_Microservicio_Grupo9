@@ -11,6 +11,7 @@ builder.AddSerilogLogging();
 builder.Services.AddControllers();
 builder.Services.AddPersistence();
 builder.Services.AddCorrelationId();
+builder.Services.AddHealth(builder.Configuration);
 
 var app = builder.Build();
 
@@ -24,5 +25,6 @@ app.UseCorrelationId();
 app.UseRequestLogging();
 
 app.MapControllers();
+app.MapHealth();
 
 app.Run();
